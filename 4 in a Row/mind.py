@@ -20,13 +20,22 @@ from time import sleep
 wins = [0, 0]
 currPlayer = 0
 board = [[" "]*7 for i in range(6)]  # [rows][columns]
+try:
+    file = open("weights.ai", "r")
+    loaded = file.readlines()
+    file.close()
+except:
+    print("File not found")
+    loaded = ["200", "12", "70", "200", "12", "100"]
+
+# print("{}".format(loaded))
 
 # print("len1(rows): %d, len2(cols): %d" % (len(board),len(board[0])))
 print("I wish you a good game")
 
-# board[1][2] = "V"
+# board[1][2] = "+"
 # board[5][0] = " "
-# board[5][1] = "V"
+# board[5][1] = "+"
 # board[5][3] = "O"
 # board[4][2] = "O"
 
@@ -50,7 +59,7 @@ def maxInRow(player,row,col):
     inRow = 0
     inRowPosib = 0
     inRowMax = 0
-    sim = "O" if player == 0 else "V"
+    sim = "O" if player == 0 else "+"
     rowTmp = board[row].copy()
     rowTmp[col] = sim
     start = col-3
@@ -75,7 +84,7 @@ def maxInRow(player,row,col):
     if inRowPosib >= 4:
         if inRow >= 1 and inRowMax >= 2 or inRowMax == 3: lastTurn = 1
     if len(rowTmp) < 4: inRowPosib = 0
-    return inRow4, inRowPosib, lastTurn
+    return inRow4, inRowPosib, lastTurn*1.5
 
 # both for the move and for checking
 def maxInCol(player, row, col):
@@ -85,7 +94,7 @@ def maxInCol(player, row, col):
     inColPosib = 0
     inColMax = 0
     colTmp = []
-    sim = "O" if player == 0 else "V"
+    sim = "O" if player == 0 else "+"
     for rows in board:
         colTmp.append(rows[col])
     colTmp[row] = sim
@@ -122,7 +131,7 @@ def maxInDiagLeft(player, row, col):
     inDiagPosib = 0
     inDiagMax = 0
     diagTmp = []
-    sim = "O" if player == 0 else "V"
+    sim = "O" if player == 0 else "+"
     for i in range(6):
         cols = col-(row-i)
         if cols < 0: continue
@@ -158,7 +167,7 @@ def maxInDiagRight(player, row, col):
     inDiagPosib = 0
     inDiagMax = 0
     diagTmp = []
-    sim = "O" if player == 0 else "V"
+    sim = "O" if player == 0 else "+"
     for i in range(6):
         cols = col+(row-i)
         if cols < 0: break
@@ -186,6 +195,7 @@ def maxInDiagRight(player, row, col):
     if len(diagTmp) < 4: inDiagPosib = 0
     return inDiag4, inDiagPosib, lastTurn
 
+# 4 functions for analise in 1 massive
 Review = [maxInRow,maxInCol,maxInDiagLeft,maxInDiagRight]
 
 # Checking after move
@@ -210,10 +220,10 @@ def win(player,row,col):
         return 1
 
 # for AI
-def makeValuation(row,col):
+def makeValuation(player, row, col):
     winM, goodM, almWin = 0, 0, 0
     for i in range(len(Review)):
-        w, g, a = Review[i](1, row, col)
+        w, g, a = Review[i](player, row, col)
         winM += w
         goodM += g
         almWin += a
@@ -221,15 +231,17 @@ def makeValuation(row,col):
 
 # to show table of game
 def printBoard():
-    sleep(0.2)
     for i in range(len(board)):
-        print("%d |" % i, end="")
+        sleep(0.02)
+        # print("%d " % i, end="")
+        print("|", end="")
         for k in board[i]:
             print(" %s |" % k, end='')
         print()
-    print("  ",end="")
+        print("-----------------------------")
+    # print("  ",end="")
     for j in range(7):
-        print("  %d " % j, end="")
+        print("  %d " % (j+1), end="")
     print("\n")
 
 def newGame():
@@ -243,8 +255,8 @@ def move(player,col):
         sim = "O"
         print("Player move, 'O'")
     else:
-        sim = "V"
-        print("Ai move 'V'")
+        sim = "+"
+        print("Ai move, '+'")
     r = 5
 
     if not board[0][col] == " ":
@@ -261,47 +273,81 @@ def move(player,col):
     currPlayer %= 2
     return 1
 
-def AImove():
+# Strategies with weights
+# 1st - Multiplier aganst Human after agression, 2nd - how many turns
+# Tit-for-tat – מכה מול מכה
+Tit4Tat = [2,1]
+# Grim-Trigger – פוגע חזרה ולא סולח
+GrimTrigger = [2,200]
+# Forgiving Trigger – פוגע חזרה וסולח
+Forgiving = [2,3]
+
+
+def AImove(myNum):
+    global agr, agrTurns
     moveList = posMoves()
     movePoints = []
     for i in range(len(moveList)):
+        floor = 1
         if moveList[i] == -1:
             movePoints.append(-1)
             continue
-        winM, goodM, almWin = makeValuation(moveList[i], i)
-        movePoints.append(winM*200+goodM*12+almWin*70)
-
-    print("{}".format(moveList))
-    print("{}".format(movePoints))
+        winM, goodM, almWin = makeValuation(myNum, moveList[i], i) # AI moves profit
+        winMH, goodMH, almWinH = makeValuation((myNum+1) % 2, moveList[i], i) # Human/opponent moves profit
+        k = i-1 if i > 0 else 0
+        j = i+1 if i < 6 else 6
+        floor -= (moveList[k]+moveList[j]-moveList[i]*2)/10
+        if floor > 1: floor = 1
+        # print(floor)
+        movePoints.append((winM+winMH*agr)*weights[0]+(goodM+goodMH*agr)*weights[1]*floor+(almWin+almWinH*agr)*weights[2])
+    if agr > 1: agrTurns -= 1
+    if agrTurns <= 0:
+        agr = 1
+        agrTurns = strategy[1]
+    # print("{}".format(moveList))
+    # print('{}'.format(movePoints))
     return movePoints.index(max(movePoints))
 
 # Cycle game
 def playGame():
     global wins
     while (True):
-        sleep(0.2)
         global choiceCl, currPlayer
         if currPlayer == 0:
             try:
-                choiceCl = int(input("Your turn(1-7): "))
+                choiceCl = int(input("Your turn(1-7): "))-1
                 if 2 == move(currPlayer, choiceCl):
+                # if 2 == move(currPlayer, AImove(currPlayer)):
                     if currPlayer == 0: wins[0] +=1
                     else: wins[1] += 1
+                    currPlayer = (currPlayer+1) % 2
                     break #WINNING()
             except:
                 print("Not allowed")
         elif currPlayer == 1:
-            if 2 == move(currPlayer, AImove()):
+            if 2 == move(currPlayer, AImove(currPlayer)):
                 if currPlayer == 0: wins[0] += 1
                 else: wins[1] += 1
+                currPlayer = (currPlayer + 1) % 2
                 break #WINNING()
 
 
 
+# Some options
+strategy = Tit4Tat
+agr = strategy[0]
+agrTurns = strategy[1]
+weights = [int(x) for x in loaded]
+# print("{}".format(weights))
 while (True):
     printBoard()
     playGame()
-    print("Score of epic competition: Human-%d  AI-%d" % (wins[0],wins[1]))
+    print("Score of epic competition:\n Human: %d  AI: %d" % (wins[0],wins[1]))
+    file = open("weights.ai", "w")
+
+    file.writelines(str(weights[i])+"\n" for i in range(3))
+
+    file.close()
     ask = input("Play more?(y) or ("")")
     if len(ask) == 0: ask = "y"
     if not ask == "y": break
